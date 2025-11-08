@@ -41,15 +41,15 @@ const params: TowerParams = {
   floorHeight: 3,
   slabThickness: 0.35,
   baseRadius: 6,
-  segments: 24,
+  segments: 4,
   twistMin: -45,
   twistMax: 240,
   twistEase: 'easeInOut',
   scaleMin: 0.65,
   scaleMax: 1.2,
   scaleEase: 'easeOut',
-  colorBottom: '#083358',
-  colorTop: '#f7f08c',
+  colorBottom: '#ff0000',
+  colorTop: '#2b00ff',
   autoSpin: false,
   spinSpeed: 15,
 }
@@ -106,17 +106,74 @@ const fillLight = new THREE.DirectionalLight(0x8ad7ff, 0.95)
 fillLight.position.set(-35, 30, -10)
 scene.add(fillLight)
 
-const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(60, 64),
-  new THREE.MeshStandardMaterial({
-    color: '#15223c',
-    metalness: 0.1,
-    roughness: 0.7,
-  }),
-)
-ground.rotation.x = -Math.PI / 2
-ground.receiveShadow = true
-scene.add(ground)
+const createInfiniteGrid = (
+  color = '#c7ccd6',
+  minorStep = 1,
+  majorStep = 5,
+  fadeDistance = 600,
+) => {
+  const geometry = new THREE.PlaneGeometry(2, 2, 1, 1)
+  const material = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uMinorStep: { value: minorStep },
+      uMajorStep: { value: majorStep },
+      uFadeDistance: { value: fadeDistance },
+      uOpacity: { value: 0.5 },
+    },
+    vertexShader: `
+      varying vec3 worldPosition;
+      void main() {
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        worldPosition = worldPos.xyz;
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
+      }
+    `,
+    fragmentShader: `
+      #ifdef GL_OES_standard_derivatives
+        #extension GL_OES_standard_derivatives : enable
+      #endif
+      varying vec3 worldPosition;
+      uniform vec3 uColor;
+      uniform float uMinorStep;
+      uniform float uMajorStep;
+      uniform float uFadeDistance;
+      uniform float uOpacity;
+
+      float gridFactor(vec2 coord, float stepSize) {
+        vec2 cell = abs(fract(coord / stepSize - 0.5) - 0.5) / fwidth(coord / stepSize);
+        float line = min(cell.x, cell.y);
+        return 1.0 - clamp(line, 0.0, 1.0);
+      }
+
+      void main() {
+        vec2 coord = worldPosition.xz;
+        float minor = gridFactor(coord, uMinorStep);
+        float major = gridFactor(coord, uMajorStep);
+        float intensity = max(major, minor * 0.35);
+        float dist = length(coord);
+        float fade = 1.0 - smoothstep(uFadeDistance * 0.35, uFadeDistance, dist);
+        float alpha = intensity * fade * uOpacity;
+        if (alpha <= 0.0) discard;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
+  })
+
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.rotation.x = -Math.PI / 2
+  mesh.scale.setScalar(5000)
+  mesh.position.y = 0
+  mesh.frustumCulled = false
+  mesh.renderOrder = -1
+  return mesh
+}
+
+const infiniteGrid = createInfiniteGrid()
+scene.add(infiniteGrid)
 
 const towerGroup = new THREE.Group()
 scene.add(towerGroup)
@@ -421,7 +478,7 @@ const initGui = () => {
     .name('Min Scale')
     .onChange(updateTowerGeometry)
   controllerMap.scaleMax = scaleFolder
-    .add(params, 'scaleMax', 0.3, 1.5, 0.01)
+    .add(params, 'scaleMax', 0.3, 10, 0.01)
     .name('Max Scale')
     .onChange(updateTowerGeometry)
   controllerMap.scaleEase = scaleFolder

@@ -18,6 +18,13 @@ body {
   background: radial-gradient(circle at top, #0c1630, #03040a 55%);
 }
 
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
 canvas {
   display: block;
   width: 100%;
