@@ -54,6 +54,19 @@ const params: TowerParams = {
   spinSpeed: 15,
 }
 
+type SavedState = {
+  name: string
+  params: TowerParams
+}
+
+type GuiController = ReturnType<GUI['add']>
+type ControllerMap = Partial<Record<keyof TowerParams, GuiController>>
+
+const savedStates: SavedState[] = []
+const controllerMap: ControllerMap = {}
+const stateSelector = { selected: 'Select State' }
+let stateController: GuiController | null = null
+
 const appRoot = document.querySelector<HTMLDivElement>('#app')
 if (!appRoot) {
   throw new Error('Unable to find #app container')
@@ -158,6 +171,48 @@ const downloadTextFile = (content: string, filename: string) => {
   anchor.click()
   document.body.removeChild(anchor)
   URL.revokeObjectURL(url)
+}
+
+const refreshGuiControllers = () => {
+  Object.values(controllerMap).forEach((controller) => {
+    if (controller) {
+      controller.updateDisplay()
+    }
+  })
+}
+
+const updateStateDropdown = (selectedName = 'Select State') => {
+  if (!stateController) {
+    return
+  }
+  const options = ['Select State', ...savedStates.map((entry) => entry.name)]
+  stateController.options(options)
+  stateSelector.selected = selectedName
+  stateController.setValue(selectedName)
+}
+
+const saveCurrentState = () => {
+  const snapshot: TowerParams = { ...params }
+  const nextState: SavedState = {
+    name: `State ${savedStates.length + 1}`,
+    params: snapshot,
+  }
+  savedStates.push(nextState)
+  updateStateDropdown(nextState.name)
+}
+
+const loadState = (stateName: string) => {
+  if (stateName === 'Select State') {
+    return
+  }
+  const match = savedStates.find((state) => state.name === stateName)
+  if (!match) {
+    return
+  }
+  Object.assign(params, match.params)
+  buildBaseSlabGeometry()
+  updateTowerGeometry()
+  refreshGuiControllers()
 }
 
 const updateTowerGeometry = () => {
@@ -322,23 +377,23 @@ const initGui = () => {
   gui.domElement.classList.add('tower-gui')
 
   const structureFolder = gui.addFolder('Structure')
-  structureFolder
+  controllerMap.floors = structureFolder
     .add(params, 'floors', 3, 120, 1)
     .name('Floors')
     .onChange(updateTowerGeometry)
-  structureFolder
+  controllerMap.floorHeight = structureFolder
     .add(params, 'floorHeight', 1, 8, 0.25)
     .name('Floor Height')
     .onChange(updateTowerGeometry)
-  structureFolder
+  controllerMap.slabThickness = structureFolder
     .add(params, 'slabThickness', 0.1, 1, 0.05)
     .name('Slab Thickness')
     .onChange(updateTowerGeometry)
-  structureFolder
+  controllerMap.baseRadius = structureFolder
     .add(params, 'baseRadius', 2, 12, 0.25)
     .name('Base Radius')
     .onChange(updateTowerGeometry)
-  structureFolder
+  controllerMap.segments = structureFolder
     .add(params, 'segments', 3, 30, 1)
     .name('Segments')
     .onChange(() => {
@@ -347,46 +402,46 @@ const initGui = () => {
     })
 
   const twistFolder = gui.addFolder('Twist Gradient')
-  twistFolder
+  controllerMap.twistMin = twistFolder
     .add(params, 'twistMin', -360, 360, 1)
     .name('Min (deg)')
     .onChange(updateTowerGeometry)
-  twistFolder
+  controllerMap.twistMax = twistFolder
     .add(params, 'twistMax', -360, 360, 1)
     .name('Max (deg)')
     .onChange(updateTowerGeometry)
-  twistFolder
+  controllerMap.twistEase = twistFolder
     .add(params, 'twistEase', ['linear', 'easeIn', 'easeOut', 'easeInOut'])
     .name('Ease')
     .onChange(updateTowerGeometry)
 
   const scaleFolder = gui.addFolder('Scale Gradient')
-  scaleFolder
+  controllerMap.scaleMin = scaleFolder
     .add(params, 'scaleMin', 0.3, 1.5, 0.01)
     .name('Min Scale')
     .onChange(updateTowerGeometry)
-  scaleFolder
+  controllerMap.scaleMax = scaleFolder
     .add(params, 'scaleMax', 0.3, 1.5, 0.01)
     .name('Max Scale')
     .onChange(updateTowerGeometry)
-  scaleFolder
+  controllerMap.scaleEase = scaleFolder
     .add(params, 'scaleEase', ['linear', 'easeIn', 'easeOut', 'easeInOut'])
     .name('Ease')
     .onChange(updateTowerGeometry)
 
   const colorFolder = gui.addFolder('Gradient Colors')
-  colorFolder
+  controllerMap.colorBottom = colorFolder
     .addColor(params, 'colorBottom')
     .name('Bottom')
     .onChange(updateTowerGeometry)
-  colorFolder
+  controllerMap.colorTop = colorFolder
     .addColor(params, 'colorTop')
     .name('Top')
     .onChange(updateTowerGeometry)
 
   const motionFolder = gui.addFolder('Motion')
-  motionFolder.add(params, 'autoSpin').name('Auto Spin')
-  motionFolder
+  controllerMap.autoSpin = motionFolder.add(params, 'autoSpin').name('Auto Spin')
+  controllerMap.spinSpeed = motionFolder
     .add(params, 'spinSpeed', 0, 60, 1)
     .name('Spin deg/s')
     .onChange(() => {
@@ -397,8 +452,14 @@ const initGui = () => {
 
   const exportFolder = gui.addFolder('Export')
   const exportActions = {
+    saveState: () => saveCurrentState(),
     obj: () => exportTowerAsObj(),
   }
+  exportFolder.add(exportActions, 'saveState').name('Save State')
+  stateController = exportFolder
+    .add(stateSelector, 'selected', ['Select State'])
+    .name('Select State')
+    .onChange((value: string) => loadState(value))
   exportFolder.add(exportActions, 'obj').name('obj')
 
   structureFolder.open()
