@@ -146,6 +146,20 @@ const ensureTowerMesh = () => {
 const lerp = (start: number, end: number, alpha: number) =>
   start + (end - start) * alpha
 
+const formatFloat = (value: number) => Number.parseFloat(value.toFixed(6)).toString()
+
+const downloadTextFile = (content: string, filename: string) => {
+  const blob = new Blob([content], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  URL.revokeObjectURL(url)
+}
+
 const updateTowerGeometry = () => {
   ensureTowerMesh()
   if (!baseSlabGeometry) {
@@ -208,6 +222,79 @@ const updateTowerGeometry = () => {
   towerMesh.geometry.dispose()
   towerMesh.geometry = merged
   towerMesh.geometry.computeVertexNormals()
+}
+
+const exportTowerAsObj = () => {
+  updateTowerGeometry()
+  if (!towerMesh) {
+    return
+  }
+
+  const geometry = towerMesh.geometry
+  const positions = geometry.getAttribute('position')
+  const normals = geometry.getAttribute('normal')
+  const colors = geometry.getAttribute('color')
+
+  const hasNormals = !!normals
+  const hasColors = !!colors
+
+  const lines: string[] = [
+    '# Parametric Tower Export',
+    `# Vertices: ${positions.count}`,
+    `# Faces: ${geometry.index ? geometry.index.count / 3 : positions.count / 3}`,
+    'o ParametricTower',
+  ]
+
+  for (let i = 0; i < positions.count; i += 1) {
+    const x = formatFloat(positions.getX(i))
+    const y = formatFloat(positions.getY(i))
+    const z = formatFloat(positions.getZ(i))
+
+    if (hasColors) {
+      const r = formatFloat(colors.getX(i))
+      const g = formatFloat(colors.getY(i))
+      const b = formatFloat(colors.getZ(i))
+      lines.push(`v ${x} ${y} ${z} ${r} ${g} ${b}`)
+    } else {
+      lines.push(`v ${x} ${y} ${z}`)
+    }
+  }
+
+  if (hasNormals && normals) {
+    for (let i = 0; i < normals.count; i += 1) {
+      const nx = formatFloat(normals.getX(i))
+      const ny = formatFloat(normals.getY(i))
+      const nz = formatFloat(normals.getZ(i))
+      lines.push(`vn ${nx} ${ny} ${nz}`)
+    }
+  }
+
+  const faceToken = (idx: number) => {
+    if (hasNormals) {
+      return `${idx}//${idx}`
+    }
+    return `${idx}`
+  }
+
+  const indices = geometry.getIndex()
+  if (indices) {
+    const indexArray = indices.array
+    for (let i = 0; i < indexArray.length; i += 3) {
+      const a = indexArray[i] + 1
+      const b = indexArray[i + 1] + 1
+      const c = indexArray[i + 2] + 1
+      lines.push(`f ${faceToken(a)} ${faceToken(b)} ${faceToken(c)}`)
+    }
+  } else {
+    for (let i = 0; i < positions.count; i += 3) {
+      const a = i + 1
+      const b = i + 2
+      const c = i + 3
+      lines.push(`f ${faceToken(a)} ${faceToken(b)} ${faceToken(c)}`)
+    }
+  }
+
+  downloadTextFile(lines.join('\n'), `parametric-tower-${Date.now()}.obj`)
 }
 
 const resizeRenderer = () => {
@@ -307,6 +394,12 @@ const initGui = () => {
         params.autoSpin = false
       }
     })
+
+  const exportFolder = gui.addFolder('Export')
+  const exportActions = {
+    obj: () => exportTowerAsObj(),
+  }
+  exportFolder.add(exportActions, 'obj').name('obj')
 
   structureFolder.open()
   twistFolder.open()
