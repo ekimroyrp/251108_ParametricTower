@@ -31,6 +31,51 @@ canvas {
   height: 100%;
 }
 
+.bezier-overlay {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(245, 247, 255, 0.92);
+  border: 1px solid rgba(12, 18, 41, 0.2);
+  box-shadow: 0 10px 30px rgba(3, 4, 10, 0.45);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 280px;
+}
+
+.bezier-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+}
+
+.bezier-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.bezier-overlay__header {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #0b0e1b;
+  text-transform: uppercase;
+}
+
+.bezier-overlay canvas {
+  width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(8, 10, 25, 0.2);
+  background: linear-gradient(#f6f7fa, #dcdfea);
+}
+
 .tower-gui {
   position: absolute;
   top: 1rem;

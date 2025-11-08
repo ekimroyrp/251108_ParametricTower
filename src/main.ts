@@ -57,15 +57,46 @@ const params: TowerParams = {
 type SavedState = {
   name: string
   params: TowerParams
+  graphEnabled: boolean
+  graphPoints: [Vec2, Vec2]
 }
 
 type GuiController = ReturnType<GUI['add']>
 type ControllerMap = Partial<Record<keyof TowerParams, GuiController>>
+type Vec2 = { x: number; y: number }
 
 const savedStates: SavedState[] = []
 const controllerMap: ControllerMap = {}
 const stateSelector = { selected: 'Select State' }
 let stateController: GuiController | null = null
+let scaleGraphToggleController: GuiController | null = null
+
+const scaleGraphState = {
+  enabled: false,
+  points: [
+    { x: 0.3, y: 0.1 },
+    { x: 0.7, y: 0.9 },
+  ] as [Vec2, Vec2],
+}
+
+type GraphOverlayRefs = {
+  container: HTMLDivElement | null
+  canvas: HTMLCanvasElement | null
+  ctx: CanvasRenderingContext2D | null
+  draggingHandle: number | null
+}
+
+const graphOverlay: GraphOverlayRefs = {
+  container: null,
+  canvas: null,
+  ctx: null,
+  draggingHandle: null,
+}
+
+let scaleBezierEase = createCubicBezierEasing(
+  scaleGraphState.points[0],
+  scaleGraphState.points[1],
+)
 
 const appRoot = document.querySelector<HTMLDivElement>('#app')
 if (!appRoot) {
@@ -230,12 +261,269 @@ const downloadTextFile = (content: string, filename: string) => {
   URL.revokeObjectURL(url)
 }
 
+const GRAPH_CANVAS_SIZE = 260
+
+const drawScaleGraph = () => {
+  if (!graphOverlay.canvas || !graphOverlay.ctx) {
+    return
+  }
+  const { canvas, ctx } = graphOverlay
+  const size = canvas.width
+  ctx.clearRect(0, 0, size, size)
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, size)
+  gradient.addColorStop(0, '#eef0f7')
+  gradient.addColorStop(1, '#d6dae6')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, size, size)
+
+  const gridStep = size / 8
+  ctx.strokeStyle = '#cad0e0'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  for (let i = 0; i <= size; i += gridStep) {
+    ctx.moveTo(0, i)
+    ctx.lineTo(size, i)
+  }
+  for (let i = 0; i <= size; i += gridStep) {
+    ctx.moveTo(i, 0)
+    ctx.lineTo(i, size)
+  }
+  ctx.stroke()
+
+  const p1 = scaleGraphState.points[0]
+  const p2 = scaleGraphState.points[1]
+
+  const toCanvas = (point: Vec2) => ({
+    x: point.x * size,
+    y: (1 - point.y) * size,
+  })
+
+  const start = { x: 0, y: size }
+  const end = { x: size, y: 0 }
+  const c1 = toCanvas(p1)
+  const c2 = toCanvas(p2)
+
+  ctx.strokeStyle = '#b43131'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(start.x, start.y)
+  ctx.lineTo(c1.x, c1.y)
+  ctx.moveTo(end.x, end.y)
+  ctx.lineTo(c2.x, c2.y)
+  ctx.stroke()
+
+  ctx.strokeStyle = '#111'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(start.x, start.y)
+  for (let i = 0; i <= 60; i += 1) {
+    const t = i / 60
+    const point = cubicBezierPoint(t, p1, p2)
+    const canvasPoint = toCanvas(point)
+    ctx.lineTo(canvasPoint.x, canvasPoint.y)
+  }
+  ctx.lineTo(end.x, end.y)
+  ctx.stroke()
+
+  const drawHandle = (point: { x: number; y: number }, isEndpoint = false) => {
+    ctx.fillStyle = isEndpoint ? '#111' : '#fff'
+    ctx.strokeStyle = '#111'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(point.x, point.y, isEndpoint ? 6 : 8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+
+  drawHandle(start, true)
+  drawHandle(end, true)
+  drawHandle(c1)
+  drawHandle(c2)
+}
+
+const initScaleGraphOverlay = () => {
+  if (graphOverlay.container) {
+    return
+  }
+  const container = document.createElement('div')
+  container.className = 'bezier-overlay hidden'
+  const header = document.createElement('div')
+  header.className = 'bezier-overlay__header'
+  header.textContent = 'Scale Gradient'
+  container.appendChild(header)
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = GRAPH_CANVAS_SIZE
+  canvas.style.touchAction = 'none'
+  container.appendChild(canvas)
+  appRoot.appendChild(container)
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    return
+  }
+
+  graphOverlay.container = container
+  graphOverlay.canvas = canvas
+  graphOverlay.ctx = ctx
+
+  const getNormalizedPoint = (event: PointerEvent) => {
+    if (!graphOverlay.canvas) {
+      return { x: 0, y: 0 }
+    }
+    const rect = graphOverlay.canvas.getBoundingClientRect()
+    const x = THREE.MathUtils.clamp((event.clientX - rect.left) / rect.width, 0, 1)
+    const y = THREE.MathUtils.clamp((event.clientY - rect.top) / rect.height, 0, 1)
+    return { x, y: 1 - y }
+  }
+
+  const handlePointerDown = (event: PointerEvent) => {
+    const point = getNormalizedPoint(event)
+    const handleRadius = 0.08
+    scaleGraphState.points.forEach((p, idx) => {
+      const dist = Math.hypot(p.x - point.x, p.y - point.y)
+      if (dist < handleRadius) {
+        graphOverlay.draggingHandle = idx
+      }
+    })
+  }
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (graphOverlay.draggingHandle === null) {
+      return
+    }
+    const point = getNormalizedPoint(event)
+    scaleGraphState.points[graphOverlay.draggingHandle] = {
+      x: THREE.MathUtils.clamp(point.x, 0, 1),
+      y: THREE.MathUtils.clamp(point.y, 0, 1),
+    }
+    updateScaleBezierEase()
+    drawScaleGraph()
+  }
+
+  const handlePointerUp = () => {
+    graphOverlay.draggingHandle = null
+  }
+
+  canvas.addEventListener('pointerdown', handlePointerDown)
+  window.addEventListener('pointermove', handlePointerMove)
+  window.addEventListener('pointerup', handlePointerUp)
+
+  drawScaleGraph()
+}
+
+const toggleScaleGraphOverlay = (show: boolean) => {
+  initScaleGraphOverlay()
+  if (!graphOverlay.container) {
+    return
+  }
+  graphOverlay.container.classList.toggle('hidden', !show)
+  graphOverlay.container.classList.toggle('visible', show)
+  if (show) {
+    drawScaleGraph()
+  }
+}
+
+const updateScaleBezierEase = (triggerUpdate = true) => {
+  scaleBezierEase = createCubicBezierEasing(
+    scaleGraphState.points[0],
+    scaleGraphState.points[1],
+  )
+  if (triggerUpdate && scaleGraphState.enabled) {
+    updateTowerGeometry()
+  }
+}
+
+const applyScaleGraphToggle = (enabled: boolean, skipUpdate = false) => {
+  scaleGraphState.enabled = enabled
+  toggleScaleGraphOverlay(enabled)
+  if (!enabled) {
+    graphOverlay.draggingHandle = null
+  }
+  if (controllerMap.scaleEase) {
+    if (enabled) {
+      controllerMap.scaleEase.disable()
+    } else {
+      controllerMap.scaleEase.enable()
+    }
+  }
+  if (!skipUpdate) {
+    updateTowerGeometry()
+  }
+}
+
 const refreshGuiControllers = () => {
   Object.values(controllerMap).forEach((controller) => {
     if (controller) {
       controller.updateDisplay()
     }
   })
+  scaleGraphToggleController?.updateDisplay()
+}
+
+function cubicBezierPoint(t: number, p1: Vec2, p2: Vec2): Vec2 {
+  const u = 1 - t
+  const tt = t * t
+  const uu = u * u
+  const uuu = uu * u
+  const ttt = tt * t
+  return {
+    x: uuu * 0 + 3 * uu * t * p1.x + 3 * u * tt * p2.x + ttt * 1,
+    y: uuu * 0 + 3 * uu * t * p1.y + 3 * u * tt * p2.y + ttt * 1,
+  }
+}
+
+function createCubicBezierEasing(p1: Vec2, p2: Vec2) {
+  const cx = 3 * p1.x
+  const bx = 3 * (p2.x - p1.x) - cx
+  const ax = 1 - cx - bx
+
+  const cy = 3 * p1.y
+  const by = 3 * (p2.y - p1.y) - cy
+  const ay = 1 - cy - by
+
+  const sampleCurveX = (t: number) => ((ax * t + bx) * t + cx) * t
+  const sampleCurveY = (t: number) => ((ay * t + by) * t + cy) * t
+  const sampleDerivativeX = (t: number) => (3 * ax * t + 2 * bx) * t + cx
+
+  const solveCurveX = (x: number, epsilon = 1e-5) => {
+    let t = x
+    for (let i = 0; i < 8; i += 1) {
+      const xValue = sampleCurveX(t) - x
+      if (Math.abs(xValue) < epsilon) {
+        return t
+      }
+      const d = sampleDerivativeX(t)
+      if (Math.abs(d) < 1e-6) {
+        break
+      }
+      t -= xValue / d
+    }
+    let t0 = 0
+    let t1 = 1
+    t = x
+    while (t0 < t1) {
+      const xValue = sampleCurveX(t)
+      if (Math.abs(xValue - x) < epsilon) {
+        return t
+      }
+      if (x > xValue) {
+        t0 = t
+      } else {
+        t1 = t
+      }
+      t = (t1 + t0) / 2
+    }
+    return t
+  }
+
+  return (x: number) => {
+    if (p1.x === p2.x && p1.y === p2.y) {
+      return x
+    }
+    const t = solveCurveX(THREE.MathUtils.clamp(x, 0, 1))
+    return sampleCurveY(t)
+  }
 }
 
 const updateStateDropdown = (selectedName = 'Select State') => {
@@ -253,6 +541,8 @@ const saveCurrentState = () => {
   const nextState: SavedState = {
     name: `State ${savedStates.length + 1}`,
     params: snapshot,
+    graphEnabled: scaleGraphState.enabled,
+    graphPoints: scaleGraphState.points.map((p) => ({ ...p })) as [Vec2, Vec2],
   }
   savedStates.push(nextState)
   updateStateDropdown(nextState.name)
@@ -267,6 +557,13 @@ const loadState = (stateName: string) => {
     return
   }
   Object.assign(params, match.params)
+  scaleGraphState.points = match.graphPoints.map((p) => ({ ...p })) as [Vec2, Vec2]
+  initScaleGraphOverlay()
+  applyScaleGraphToggle(match.graphEnabled, true)
+  if (scaleGraphToggleController) {
+    scaleGraphToggleController.updateDisplay()
+  }
+  drawScaleGraph()
   buildBaseSlabGeometry()
   updateTowerGeometry()
   refreshGuiControllers()
@@ -286,11 +583,14 @@ const updateTowerGeometry = () => {
   const highlightColor = new THREE.Color('#ffffff')
 
   const geometries: THREE.BufferGeometry[] = []
+  const scaleEaseFn = scaleGraphState.enabled
+    ? scaleBezierEase
+    : easingFns[params.scaleEase]
 
   for (let i = 0; i < params.floors; i += 1) {
     const t = params.floors === 1 ? 0 : i / (params.floors - 1)
     const twistT = easingFns[params.twistEase](t)
-    const scaleT = easingFns[params.scaleEase](t)
+    const scaleT = scaleEaseFn(t)
     const twist = THREE.MathUtils.degToRad(
       lerp(params.twistMin, params.twistMax, twistT),
     )
@@ -485,6 +785,13 @@ const initGui = () => {
     .add(params, 'scaleEase', ['linear', 'easeIn', 'easeOut', 'easeInOut'])
     .name('Ease')
     .onChange(updateTowerGeometry)
+  scaleGraphToggleController = scaleFolder
+    .add(scaleGraphState, 'enabled')
+    .name('Use Graph')
+    .onChange((value: boolean) => {
+      applyScaleGraphToggle(value)
+      updateScaleBezierEase(false)
+    })
 
   const colorFolder = gui.addFolder('Gradient Colors')
   controllerMap.colorBottom = colorFolder
