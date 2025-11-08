@@ -1,6 +1,7 @@
 import './style.css'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import GUI from 'lil-gui'
 
 type EasingMode = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'
@@ -22,6 +23,7 @@ type TowerParams = {
   floorHeight: number
   slabThickness: number
   baseRadius: number
+  segments: number
   twistMin: number
   twistMax: number
   twistEase: EasingMode
@@ -39,6 +41,7 @@ const params: TowerParams = {
   floorHeight: 3,
   slabThickness: 0.35,
   baseRadius: 6,
+  segments: 48,
   twistMin: -45,
   twistMax: 240,
   twistEase: 'easeInOut',
@@ -60,10 +63,12 @@ const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.shadowMap.enabled = true
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1.15
 appRoot.appendChild(renderer.domElement)
 
 const scene = new THREE.Scene()
-scene.background = new THREE.Color('#04060b')
+scene.background = new THREE.Color('#0a1020')
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000)
 camera.position.set(20, 25, 30)
@@ -72,23 +77,28 @@ const controls = new OrbitControls(camera, renderer.domElement)
 controls.enableDamping = true
 controls.maxPolarAngle = Math.PI * 0.495
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.3)
+const ambientLight = new THREE.AmbientLight(0xf5f8ff, 0.55)
 scene.add(ambientLight)
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 1.2)
-keyLight.position.set(25, 40, 10)
+const hemiLight = new THREE.HemisphereLight(0xf4f6ff, 0x0a0d16, 0.85)
+hemiLight.position.set(0, 80, 0)
+scene.add(hemiLight)
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.35)
+keyLight.position.set(40, 60, 25)
+keyLight.castShadow = true
 scene.add(keyLight)
 
-const fillLight = new THREE.DirectionalLight(0x7ec8ff, 0.6)
-fillLight.position.set(-30, 10, -20)
+const fillLight = new THREE.DirectionalLight(0x8ad7ff, 0.95)
+fillLight.position.set(-35, 30, -10)
 scene.add(fillLight)
 
 const ground = new THREE.Mesh(
   new THREE.CircleGeometry(60, 64),
   new THREE.MeshStandardMaterial({
-    color: '#0f1928',
-    metalness: 0,
-    roughness: 0.85,
+    color: '#15223c',
+    metalness: 0.1,
+    roughness: 0.7,
   }),
 )
 ground.rotation.x = -Math.PI / 2
@@ -98,18 +108,17 @@ scene.add(ground)
 const towerGroup = new THREE.Group()
 scene.add(towerGroup)
 
-const slabGeometry = new THREE.CylinderGeometry(1, 1, 1, 64, 1, false)
+let baseSlabGeometry: THREE.CylinderGeometry | null = null
 const slabMaterial = new THREE.MeshStandardMaterial({
   vertexColors: true,
-  metalness: 0.2,
-  roughness: 0.45,
+  metalness: 0.05,
+  roughness: 0.35,
+  envMapIntensity: 0.8,
   side: THREE.DoubleSide,
 })
 
-let towerMesh: THREE.InstancedMesh<
-  THREE.CylinderGeometry,
-  THREE.MeshStandardMaterial
-> | null = null
+let towerMesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null =
+  null
 
 const reusableMatrix = new THREE.Matrix4()
 const reusablePosition = new THREE.Vector3()
@@ -117,17 +126,19 @@ const reusableQuaternion = new THREE.Quaternion()
 const reusableScale = new THREE.Vector3()
 const axisY = new THREE.Vector3(0, 1, 0)
 
+const buildBaseSlabGeometry = () => {
+  const segmentCount = Math.max(3, Math.round(params.segments))
+  if (baseSlabGeometry) {
+    baseSlabGeometry.dispose()
+  }
+  baseSlabGeometry = new THREE.CylinderGeometry(1, 1, 1, segmentCount, 1, false)
+}
+
 const ensureTowerMesh = () => {
-  if (!towerMesh || towerMesh.count !== params.floors) {
-    if (towerMesh) {
-      towerGroup.remove(towerMesh)
-    }
-    towerMesh = new THREE.InstancedMesh(
-      slabGeometry,
-      slabMaterial,
-      Math.max(1, params.floors),
-    )
-    towerMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  if (!towerMesh) {
+    towerMesh = new THREE.Mesh(new THREE.BufferGeometry(), slabMaterial)
+    towerMesh.castShadow = true
+    towerMesh.receiveShadow = true
     towerGroup.add(towerMesh)
   }
 }
@@ -137,12 +148,18 @@ const lerp = (start: number, end: number, alpha: number) =>
 
 const updateTowerGeometry = () => {
   ensureTowerMesh()
-  if (!towerMesh) {
+  if (!baseSlabGeometry) {
+    buildBaseSlabGeometry()
+  }
+  if (!towerMesh || !baseSlabGeometry) {
     return
   }
 
   const bottomColor = new THREE.Color(params.colorBottom)
   const topColor = new THREE.Color(params.colorTop)
+  const highlightColor = new THREE.Color('#ffffff')
+
+  const geometries: THREE.BufferGeometry[] = []
 
   for (let i = 0; i < params.floors; i += 1) {
     const t = params.floors === 1 ? 0 : i / (params.floors - 1)
@@ -161,16 +178,36 @@ const updateTowerGeometry = () => {
       params.baseRadius * scaleFactor,
     )
     reusableMatrix.compose(reusablePosition, reusableQuaternion, reusableScale)
-    towerMesh.setMatrixAt(i, reusableMatrix)
 
-    const slabColor = bottomColor.clone().lerp(topColor, t)
-    towerMesh.setColorAt(i, slabColor)
+    const slab = baseSlabGeometry.clone()
+    slab.applyMatrix4(reusableMatrix)
+
+    const vertexCount = slab.attributes.position.count
+    const colors = new Float32Array(vertexCount * 3)
+    const gradientColor = bottomColor
+      .clone()
+      .lerp(topColor, t)
+      .lerp(highlightColor, 0.15)
+
+    for (let v = 0; v < vertexCount; v += 1) {
+      const offset = v * 3
+      colors[offset] = gradientColor.r
+      colors[offset + 1] = gradientColor.g
+      colors[offset + 2] = gradientColor.b
+    }
+
+    slab.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    geometries.push(slab)
   }
 
-  towerMesh.instanceMatrix.needsUpdate = true
-  if (towerMesh.instanceColor) {
-    towerMesh.instanceColor.needsUpdate = true
+  const merged = mergeGeometries(geometries, true)
+  if (!merged) {
+    return
   }
+
+  towerMesh.geometry.dispose()
+  towerMesh.geometry = merged
+  towerMesh.geometry.computeVertexNormals()
 }
 
 const resizeRenderer = () => {
@@ -214,6 +251,13 @@ const initGui = () => {
     .add(params, 'baseRadius', 2, 12, 0.25)
     .name('Base Radius')
     .onChange(updateTowerGeometry)
+  structureFolder
+    .add(params, 'segments', 3, 128, 1)
+    .name('Segments')
+    .onChange(() => {
+      buildBaseSlabGeometry()
+      updateTowerGeometry()
+    })
 
   const twistFolder = gui.addFolder('Twist Gradient')
   twistFolder
