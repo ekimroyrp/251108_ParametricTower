@@ -66,6 +66,8 @@ canvas {
   letter-spacing: 0.04em;
   color: #0b0e1b;
   text-transform: uppercase;
+  cursor: move;
+  user-select: none;
 }
 
 .bezier-overlay canvas {

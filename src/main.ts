@@ -70,6 +70,7 @@ const controllerMap: ControllerMap = {}
 const stateSelector = { selected: 'Select State' }
 let stateController: GuiController | null = null
 let scaleGraphToggleController: GuiController | null = null
+let overlayResizeListenerAttached = false
 
 const scaleGraphState = {
   enabled: false,
@@ -84,6 +85,9 @@ type GraphOverlayRefs = {
   canvas: HTMLCanvasElement | null
   ctx: CanvasRenderingContext2D | null
   draggingHandle: number | null
+  draggingOverlay: boolean
+  overlayOffset: Vec2
+  position: Vec2
 }
 
 const graphOverlay: GraphOverlayRefs = {
@@ -91,6 +95,9 @@ const graphOverlay: GraphOverlayRefs = {
   canvas: null,
   ctx: null,
   draggingHandle: null,
+  draggingOverlay: false,
+  overlayOffset: { x: 0, y: 0 },
+  position: { x: 16, y: 16 },
 }
 
 let scaleBezierEase = createCubicBezierEasing(
@@ -342,6 +349,27 @@ const drawScaleGraph = () => {
   drawHandle(c2)
 }
 
+const setOverlayPosition = (x: number, y: number) => {
+  if (!graphOverlay.container) {
+    return
+  }
+  const padding = 16
+  const maxX = Math.max(
+    padding,
+    window.innerWidth - graphOverlay.container.offsetWidth - padding,
+  )
+  const maxY = Math.max(
+    padding,
+    window.innerHeight - graphOverlay.container.offsetHeight - padding,
+  )
+  const clampedX = THREE.MathUtils.clamp(x, padding, maxX)
+  const clampedY = THREE.MathUtils.clamp(y, padding, maxY)
+  graphOverlay.position = { x: clampedX, y: clampedY }
+  graphOverlay.container.style.left = `${clampedX}px`
+  graphOverlay.container.style.top = `${clampedY}px`
+  graphOverlay.container.style.bottom = 'auto'
+}
+
 const initScaleGraphOverlay = () => {
   if (graphOverlay.container) {
     return
@@ -408,6 +436,54 @@ const initScaleGraphOverlay = () => {
   canvas.addEventListener('pointerdown', handlePointerDown)
   window.addEventListener('pointermove', handlePointerMove)
   window.addEventListener('pointerup', handlePointerUp)
+
+  const handleOverlayPointerDown = (event: PointerEvent) => {
+    if (!graphOverlay.container) {
+      return
+    }
+    event.preventDefault()
+    const rect = graphOverlay.container.getBoundingClientRect()
+    graphOverlay.draggingOverlay = true
+    graphOverlay.overlayOffset = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    }
+  }
+
+  const handleOverlayPointerMove = (event: PointerEvent) => {
+    if (!graphOverlay.draggingOverlay) {
+      return
+    }
+    const x = event.clientX - graphOverlay.overlayOffset.x
+    const y = event.clientY - graphOverlay.overlayOffset.y
+    setOverlayPosition(x, y)
+  }
+
+  const handleOverlayPointerUp = () => {
+    graphOverlay.draggingOverlay = false
+  }
+
+  header.addEventListener('pointerdown', handleOverlayPointerDown)
+  window.addEventListener('pointermove', handleOverlayPointerMove)
+  window.addEventListener('pointerup', handleOverlayPointerUp)
+
+  const applyInitialPosition = () => {
+    const defaultY =
+      window.innerHeight -
+      (graphOverlay.container?.offsetHeight ?? 0) -
+      16
+    setOverlayPosition(graphOverlay.position.x, defaultY)
+  }
+  requestAnimationFrame(applyInitialPosition)
+
+  if (!overlayResizeListenerAttached) {
+    window.addEventListener('resize', () => {
+      if (graphOverlay.container) {
+        setOverlayPosition(graphOverlay.position.x, graphOverlay.position.y)
+      }
+    })
+    overlayResizeListenerAttached = true
+  }
 
   drawScaleGraph()
 }
