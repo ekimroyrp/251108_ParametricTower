@@ -54,11 +54,28 @@ const params: TowerParams = {
   spinSpeed: 15,
 }
 
+type LightingPresetName =
+  | 'Neutral Day'
+  | 'Studio Cool'
+  | 'Sunset Warm'
+  | 'Night Neon'
+  | 'High Contrast'
+
+type LightingPreset = {
+  ambient: { color: string; intensity: number }
+  hemisphere: { skyColor: string; groundColor: string; intensity: number }
+  key: { color: string; intensity: number; position: [number, number, number] }
+  fill: { color: string; intensity: number; position: [number, number, number] }
+  background: string
+  exposure: number
+}
+
 type SavedState = {
   name: string
   params: TowerParams
   graphEnabled: boolean
   graphPoints: [Vec2, Vec2]
+  lighting: LightingPresetName
 }
 
 type GuiController = ReturnType<GUI['add']>
@@ -71,6 +88,8 @@ const stateSelector = { selected: 'Select State' }
 let stateController: GuiController | null = null
 let scaleGraphToggleController: GuiController | null = null
 let overlayResizeListenerAttached = false
+let lightingController: GuiController | null = null
+const lightingState = { selected: 'Neutral Day' as LightingPresetName }
 
 const scaleGraphState = {
   enabled: false,
@@ -104,6 +123,49 @@ let scaleBezierEase = createCubicBezierEasing(
   scaleGraphState.points[0],
   scaleGraphState.points[1],
 )
+
+const lightingPresets: Record<LightingPresetName, LightingPreset> = {
+  'Neutral Day': {
+    ambient: { color: '#f5f8ff', intensity: 0.55 },
+    hemisphere: { skyColor: '#f4f6ff', groundColor: '#0a0d16', intensity: 0.85 },
+    key: { color: '#ffffff', intensity: 1.35, position: [40, 60, 25] },
+    fill: { color: '#8ad7ff', intensity: 0.95, position: [-35, 30, -10] },
+    background: '#0a1020',
+    exposure: 1.15,
+  },
+  'Studio Cool': {
+    ambient: { color: '#d0ddff', intensity: 0.3 },
+    hemisphere: { skyColor: '#b8d9ff', groundColor: '#0c1222', intensity: 0.7 },
+    key: { color: '#dff1ff', intensity: 1.6, position: [25, 70, 35] },
+    fill: { color: '#6ab0ff', intensity: 1.1, position: [-50, 25, -5] },
+    background: '#050814',
+    exposure: 1.3,
+  },
+  'Sunset Warm': {
+    ambient: { color: '#ffc9a3', intensity: 0.45 },
+    hemisphere: { skyColor: '#ffb48d', groundColor: '#1b0b10', intensity: 0.6 },
+    key: { color: '#ffcf96', intensity: 1.7, position: [55, 45, 5] },
+    fill: { color: '#ff7b6e', intensity: 0.8, position: [-25, 15, -25] },
+    background: '#2b0d12',
+    exposure: 1.05,
+  },
+  'Night Neon': {
+    ambient: { color: '#4bb4ff', intensity: 0.25 },
+    hemisphere: { skyColor: '#0c2449', groundColor: '#010104', intensity: 0.9 },
+    key: { color: '#83f4ff', intensity: 1, position: [35, 30, 35] },
+    fill: { color: '#ff4bbd', intensity: 0.85, position: [-30, 40, -20] },
+    background: '#05040f',
+    exposure: 1.4,
+  },
+  'High Contrast': {
+    ambient: { color: '#fbfbfb', intensity: 0.2 },
+    hemisphere: { skyColor: '#ffffff', groundColor: '#050505', intensity: 0.45 },
+    key: { color: '#ffffff', intensity: 1.9, position: [60, 80, 40] },
+    fill: { color: '#1c2538', intensity: 0.4, position: [-45, 20, -35] },
+    background: '#0a0a0a',
+    exposure: 1.25,
+  },
+}
 
 const appRoot = document.querySelector<HTMLDivElement>('#app')
 if (!appRoot) {
@@ -143,6 +205,35 @@ scene.add(keyLight)
 const fillLight = new THREE.DirectionalLight(0x8ad7ff, 0.95)
 fillLight.position.set(-35, 30, -10)
 scene.add(fillLight)
+
+const setLightingPreset = (
+  name: LightingPresetName,
+  options?: { fromController?: boolean },
+) => {
+  const preset = lightingPresets[name]
+  if (!preset) {
+    return
+  }
+  lightingState.selected = name
+  ambientLight.color.set(preset.ambient.color)
+  ambientLight.intensity = preset.ambient.intensity
+  hemiLight.color.set(preset.hemisphere.skyColor)
+  hemiLight.groundColor.set(preset.hemisphere.groundColor)
+  hemiLight.intensity = preset.hemisphere.intensity
+  keyLight.color.set(preset.key.color)
+  keyLight.intensity = preset.key.intensity
+  keyLight.position.set(...preset.key.position)
+  fillLight.color.set(preset.fill.color)
+  fillLight.intensity = preset.fill.intensity
+  fillLight.position.set(...preset.fill.position)
+  renderer.toneMappingExposure = preset.exposure
+  scene.background = new THREE.Color(preset.background)
+  if (!options?.fromController) {
+    lightingController?.setValue(name)
+  }
+}
+
+setLightingPreset(lightingState.selected, { fromController: true })
 
 const createInfiniteGrid = (
   color = '#c7ccd6',
@@ -619,6 +710,7 @@ const saveCurrentState = () => {
     params: snapshot,
     graphEnabled: scaleGraphState.enabled,
     graphPoints: scaleGraphState.points.map((p) => ({ ...p })) as [Vec2, Vec2],
+    lighting: lightingState.selected,
   }
   savedStates.push(nextState)
   updateStateDropdown(nextState.name)
@@ -640,6 +732,7 @@ const loadState = (stateName: string) => {
     scaleGraphToggleController.updateDisplay()
   }
   drawScaleGraph()
+  setLightingPreset(match.lighting)
   buildBaseSlabGeometry()
   updateTowerGeometry()
   refreshGuiControllers()
@@ -878,6 +971,16 @@ const initGui = () => {
     .addColor(params, 'colorTop')
     .name('Top')
     .onChange(updateTowerGeometry)
+  lightingController = colorFolder
+    .add(
+      lightingState,
+      'selected',
+      Object.keys(lightingPresets) as LightingPresetName[],
+    )
+    .name('Lighting')
+    .onChange((value: LightingPresetName) =>
+      setLightingPreset(value, { fromController: true }),
+    )
 
   const motionFolder = gui.addFolder('Motion')
   controllerMap.autoSpin = motionFolder.add(params, 'autoSpin').name('Auto Spin')
