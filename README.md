@@ -12,7 +12,7 @@
 ## Getting Started
 1. Ensure you have Node.js 18+ installed.
 2. Install dependencies with `npm install`.
-3. Launch the local dev server via `npm run dev` and open the printed localhost URL.
+3. Launch the local dev server via `npm run dev` (or double-click/execute `dev.bat` to automatically bypass PowerShell execution policy) and open the printed localhost URL.
 
 ## Controls
 - Left mouse drag: orbit around the tower

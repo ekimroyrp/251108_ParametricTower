@@ -257,7 +257,7 @@ const initGui = () => {
   motionFolder.add(params, 'autoSpin').name('Auto Spin')
   motionFolder
     .add(params, 'spinSpeed', 0, 60, 1)
-    .name('Spin °/s')
+    .name('Spin deg/s')
     .onChange(() => {
       if (params.spinSpeed <= 0) {
         params.autoSpin = false
