@@ -5,7 +5,7 @@
 ## Features
 - Parametric floor-stack generator with controls for count, spacing, slab thickness, base radius, and polygonal segments (triangle → 30-gon)
 - Twist and scale gradients with easing curves plus a draggable Bezier graph overlay for custom scale interpolation
-- Saved state system with dropdown recall, OBJ mesh export (with per-vertex colors), and auto-spin showcase toggle
+- Saved state system with dropdown recall, OBJ mesh export (with per-vertex colors), PNG scene capture, and auto-spin showcase toggle
 - Gradient color pickers and five lighting presets (Day, Studio, Sunset, Neon, High Contrast) for fast mood studies
 - Infinite Houdini-style fading grid, orbit/pan/zoom navigation, and draggable GUI overlay for the Bezier editor
 - Built-in GitHub Pages deployment bundle for sharing the experience as a static site

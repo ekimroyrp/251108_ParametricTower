@@ -172,7 +172,10 @@ if (!appRoot) {
   throw new Error('Unable to find #app container')
 }
 
-const renderer = new THREE.WebGLRenderer({ antialias: true })
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  preserveDrawingBuffer: true,
+})
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.shadowMap.enabled = true
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -357,6 +360,26 @@ const downloadTextFile = (content: string, filename: string) => {
   anchor.click()
   document.body.removeChild(anchor)
   URL.revokeObjectURL(url)
+}
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  URL.revokeObjectURL(url)
+}
+
+const downloadDataUrl = (dataUrl: string, filename: string) => {
+  const anchor = document.createElement('a')
+  anchor.href = dataUrl
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
 }
 
 const GRAPH_CANVAS_SIZE = 260
@@ -878,6 +901,27 @@ const exportTowerAsObj = () => {
   downloadTextFile(lines.join('\n'), `parametric-tower-${Date.now()}.obj`)
 }
 
+const exportSceneAsPng = () => {
+  controls.update()
+  renderer.render(scene, camera)
+  const filename = `parametric-tower-${Date.now()}.png`
+  const canvas = renderer.domElement as HTMLCanvasElement | null
+  if (!canvas) {
+    return
+  }
+  if (canvas.toBlob) {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        return
+      }
+      downloadBlob(blob, filename)
+    }, 'image/png')
+    return
+  }
+  const dataUrl = canvas.toDataURL('image/png')
+  downloadDataUrl(dataUrl, filename)
+}
+
 const resizeRenderer = () => {
   const { clientWidth, clientHeight } = appRoot
   renderer.setSize(clientWidth, clientHeight, false)
@@ -997,6 +1041,7 @@ const initGui = () => {
   const exportActions = {
     saveState: () => saveCurrentState(),
     obj: () => exportTowerAsObj(),
+    png: () => exportSceneAsPng(),
   }
   exportFolder.add(exportActions, 'saveState').name('Save State')
   stateController = exportFolder
@@ -1004,6 +1049,7 @@ const initGui = () => {
     .name('Select State')
     .onChange((value: string) => loadState(value))
   exportFolder.add(exportActions, 'obj').name('obj')
+  exportFolder.add(exportActions, 'png').name('png')
 
   structureFolder.open()
   twistFolder.open()
