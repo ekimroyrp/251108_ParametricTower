@@ -41,7 +41,7 @@ const params: TowerParams = {
   floorHeight: 3,
   slabThickness: 0.35,
   baseRadius: 6,
-  segments: 48,
+  segments: 24,
   twistMin: -45,
   twistMax: 240,
   twistEase: 'easeInOut',
@@ -50,7 +50,7 @@ const params: TowerParams = {
   scaleEase: 'easeOut',
   colorBottom: '#083358',
   colorTop: '#f7f08c',
-  autoSpin: true,
+  autoSpin: false,
   spinSpeed: 15,
 }
 
@@ -252,7 +252,7 @@ const initGui = () => {
     .name('Base Radius')
     .onChange(updateTowerGeometry)
   structureFolder
-    .add(params, 'segments', 3, 128, 1)
+    .add(params, 'segments', 3, 30, 1)
     .name('Segments')
     .onChange(() => {
       buildBaseSlabGeometry()
@@ -313,24 +313,8 @@ const initGui = () => {
   scaleFolder.open()
 }
 
-const buildHud = () => {
-  const hud = document.createElement('section')
-  hud.className = 'hud'
-  hud.innerHTML = `
-    <h1>251108_ParametricTower</h1>
-    <p>Use the sliders to sculpt floor count, twisting, scaling, and colors. Orbit with your mouse to inspect the tower.</p>
-    <ul>
-      <li><span>Left mouse</span> orbit</li>
-      <li><span>Right mouse</span> pan</li>
-      <li><span>Scroll</span> zoom</li>
-    </ul>
-  `
-  appRoot.appendChild(hud)
-}
-
 window.addEventListener('resize', resizeRenderer)
 
-buildHud()
 resizeRenderer()
 updateTowerGeometry()
 initGui()

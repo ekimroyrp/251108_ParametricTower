@@ -18,65 +18,10 @@ body {
   background: radial-gradient(circle at top, #0c1630, #03040a 55%);
 }
 
-#app {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-}
-
 canvas {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.hud {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
-  max-width: 320px;
-  padding: 1rem 1.25rem;
-  border-radius: 0.75rem;
-  background: rgba(4, 7, 16, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
-  line-height: 1.4;
-  font-size: 0.95rem;
-  z-index: 10;
-}
-
-.hud h1 {
-  margin: 0 0 0.35rem;
-  font-size: 1.1rem;
-  letter-spacing: 0.02em;
-}
-
-.hud p {
-  margin: 0 0 0.75rem;
-  color: #c2cce5;
-}
-
-.hud ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.35rem;
-}
-
-.hud li {
-  display: flex;
-  justify-content: space-between;
-  color: #91a4cc;
-  font-size: 0.88rem;
-}
-
-.hud li span {
-  font-weight: 600;
-  color: #f7f9ff;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .tower-gui {
@@ -87,11 +32,6 @@ canvas {
 }
 
 @media (max-width: 720px) {
-  .hud {
-    max-width: 260px;
-    font-size: 0.85rem;
-  }
-
   .tower-gui {
     top: unset;
     bottom: 0.5rem;
