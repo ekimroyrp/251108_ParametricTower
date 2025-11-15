@@ -23,7 +23,6 @@
 - Enable “Use Graph” in the Scale Gradient panel to open the draggable Bezier editor; drag the two handles to reshape the scale curve
 
 ## Deployment
-- Live demo: https://ekimroyrp.github.io/251108_ParametricTower/
-- Build locally with relative asset paths: `npm run build -- --base=./`
-- To publish to GitHub Pages, copy the contents of `dist/` into a clean `gh-pages` branch (or worktree) and push:  
-  `git worktree add ../251108_ParametricTower-gh-pages -b gh-pages` → copy `dist` → commit → `git push origin gh-pages`
+- **Local build preview:** `npm install` then `npm run dev` for hot-reload development, or `npm run build -- --base=./ && npm run preview` to serve the production bundle locally with relative asset paths.
+- **Publish to GitHub Pages:** After `npm run build -- --base=./`, switch to the `gh-pages` branch (or its worktree), replace its contents with the `dist/` output, commit, and `git push origin gh-pages`. Jump back to `main` once published to keep the source workspace clean.
+- **Live demo:** https://ekimroyrp.github.io/251108_ParametricTower/
